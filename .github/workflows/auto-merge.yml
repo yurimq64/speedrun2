@@ -1,0 +1,54 @@
+name: Auto Merge Pull Requests
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verificar se a PR foi aprovada
+        id: check_approval
+        run: |
+          if [[ "${{ github.event.review.state }}" == "approved" ]]; then
+            echo "approved=true" >> $GITHUB_ENV
+          else
+            echo "approved=false" >> $GITHUB_ENV
+          fi
+
+      - name: Checkout do repositório
+        if: env.approved == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verificar a branch de origem
+        if: env.approved == 'true'
+        id: check_branch
+        run: |
+          HEAD_REF="${{ github.event.pull_request.head.ref }}"
+          if [[ "$HEAD_REF" == "dev" ]]; then
+            echo "is_dev_branch=true" >> $GITHUB_ENV
+          else
+            echo "is_dev_branch=false" >> $GITHUB_ENV
+          fi
+
+      - name: Fazer merge automático da PR (dev para main)
+        if: env.approved == 'true' && env.is_dev_branch == 'true'
+        run: |
+          gh pr merge ${{ github.event.pull_request.number }} --merge --auto
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fazer merge automático da PR (outras branches)
+        if: env.approved == 'true' && env.is_dev_branch == 'false'
+        run: |
+          gh pr merge ${{ github.event.pull_request.number }} --merge --auto --delete-branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
